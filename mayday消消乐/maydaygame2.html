@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mayday消消乐</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            background-image: url('https://example.com/mayday-bg.jpg'); /* 替换为五月天背景图 */
+            background-size: cover;
+        }
+        
+        h1 {
+            color: #333;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+            margin-bottom: 20px;
+        }
+        
+        .game-container {
+            display: grid;
+            grid-template-columns: repeat(6, 100px);
+            grid-gap: 10px;
+            perspective: 1000px;
+        }
+        
+        .card {
+            width: 100px;
+            height: 100px;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.5s;
+            cursor: pointer;
+        }
+        
+        .card.flipped {
+            transform: rotateY(180deg);
+        }
+        
+        .card.matched {
+            visibility: hidden;
+            opacity: 0;
+            transition: visibility 0s 0.5s, opacity 0.5s linear;
+        }
+        
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        
+        .card-front {
+            background-color: #3498db;
+            color: white;
+            transform: rotateY(180deg);
+            background-size: cover;
+            background-position: center;
+        }
+        
+        .card-back {
+            background-color: #e74c3c;
+            color: white;
+            background-image: url('tupian/6.jpg'); /* 替换为五月天logo */
+            background-size: 80%;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        
+        .win-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 10px;
+            font-size: 24px;
+            display: none;
+            z-index: 100;
+        }
+        
+        .controls {
+            margin-top: 20px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 0 10px;
+        }
+        
+        button:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Mayday消消乐</h1>
+    <div class="game-container" id="game-container"></div>
+    <div class="win-message" id="win-message">恭喜你赢了！</div>
+    <div class="controls">
+        <button id="restart-btn">重新开始</button>
+        <button id="music-btn">暂停音乐</button>
+    </div>
+
+    <audio id="bg-music" loop>
+        <source src="宠上天.mp3" type="audio/mpeg"> <!-- 替换为五月天音乐文件 -->
+        您的浏览器不支持音频元素。
+    </audio>
+    
+    <audio id="win-sound">
+        <source src="win-sound.mp3" type="audio/mpeg"> <!-- 替换为胜利音效 -->
+        您的浏览器不支持音频元素。
+    </audio>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const gameContainer = document.getElementById('game-container');
+            const winMessage = document.getElementById('win-message');
+            const restartBtn = document.getElementById('restart-btn');
+            const musicBtn = document.getElementById('music-btn');
+            const bgMusic = document.getElementById('bg-music');
+            const winSound = document.getElementById('win-sound');
+            
+            // Mayday相关图片 (实际使用时请替换为真实的图片URL)
+            const maydayImages = [
+               
+                'tupian/1.jpg',
+                'tupian/2.jpg',
+                'tupian/3.jpg',
+                'tupian/4.jpg',
+                'tupian/5.jpg',
+                'tupian/13.jpg',
+                'tupian/7.jpg',
+                'tupian/8.jpg',
+                'tupian/9.jpg',
+                'tupian/10.jpg',
+                'tupian/11.jpg',
+                'tupian/12.jpg',
+                'tupian/14.jpg',
+                'tupian/15.jpg',
+                'tupian/16.jpg',
+            ];
+            
+            let cards = [];
+            let hasFlippedCard = false;
+            let lockBoard = false;
+            let firstCard, secondCard;
+            let matchedPairs = 0;
+            
+            // 自动播放背景音乐
+            function startMusic() {
+                bgMusic.play().catch(e => {
+                    console.log('自动播放被阻止，请点击页面后重试');
+                });
+            }
+            
+            // 页面点击后尝试播放音乐
+            document.body.addEventListener('click', () => {
+                if (bgMusic.paused) {
+                    bgMusic.play();
+                }
+            }, { once: true });
+            
+            // 初始化游戏
+            function initGame() {
+                // 创建卡片对 (15种图片，每种2张)
+                const cardValues = [...maydayImages, ...maydayImages];
+                
+                // 洗牌
+                cardValues.sort(() => 0.5 - Math.random());
+                
+                // 清空游戏区域
+                gameContainer.innerHTML = '';
+                cards = [];
+                matchedPairs = 0;
+                winMessage.style.display = 'none';
+                
+                // 创建卡片元素
+                cardValues.forEach((image, index) => {
+                    const card = document.createElement('div');
+                    card.classList.add('card');
+                    card.dataset.image = image;
+                    
+                    const cardBack = document.createElement('div');
+                    cardBack.classList.add('card-face', 'card-back');
+                    
+                    const cardFront = document.createElement('div');
+                    cardFront.classList.add('card-face', 'card-front');
+                    cardFront.style.backgroundImage = `url(${image})`;
+                    
+                    card.appendChild(cardBack);
+                    card.appendChild(cardFront);
+                    
+                    card.addEventListener('click', flipCard);
+                    gameContainer.appendChild(card);
+                    
+                    cards.push(card);
+                });
+            }
+            
+            // 翻转卡片
+            function flipCard() {
+                if (lockBoard) return;
+                if (this === firstCard) return;
+                if (this.classList.contains('matched')) return;
+                
+                this.classList.add('flipped');
+                
+                if (!hasFlippedCard) {
+                    // 第一次点击
+                    hasFlippedCard = true;
+                    firstCard = this;
+                    return;
+                }
+                
+                // 第二次点击
+                secondCard = this;
+                lockBoard = true;
+                
+                checkForMatch();
+            }
+            
+            // 检查是否匹配
+            function checkForMatch() {
+                const isMatch = firstCard.dataset.image === secondCard.dataset.image;
+                
+                if (isMatch) {
+                    disableCards();
+                    matchedPairs++;
+                    
+                    if (matchedPairs === maydayImages.length) {
+                        // 游戏胜利
+                        setTimeout(() => {
+                            winMessage.style.display = 'block';
+                            winSound.play();
+                        }, 500);
+                    }
+                } else {
+                    unflipCards();
+                }
+            }
+            
+            // 禁用已匹配的卡片
+            function disableCards() {
+                firstCard.removeEventListener('click', flipCard);
+                secondCard.removeEventListener('click', flipCard);
+                
+                setTimeout(() => {
+                    firstCard.classList.add('matched');
+                    secondCard.classList.add('matched');
+                    resetBoard();
+                }, 500);
+            }
+            
+            // 翻转不匹配的卡片回去
+            function unflipCards() {
+                setTimeout(() => {
+                    firstCard.classList.remove('flipped');
+                    secondCard.classList.remove('flipped');
+                    resetBoard();
+                }, 1000);
+            }
+            
+            // 重置游戏板状态
+            function resetBoard() {
+                [hasFlippedCard, lockBoard] = [false, false];
+                [firstCard, secondCard] = [null, null];
+            }
+            
+            // 重新开始游戏
+            restartBtn.addEventListener('click', () => {
+                bgMusic.currentTime = 0;
+                bgMusic.play();
+                initGame();
+            });
+            
+            // 音乐控制
+            musicBtn.addEventListener('click', () => {
+                if (bgMusic.paused) {
+                    bgMusic.play();
+                    musicBtn.textContent = '暂停音乐';
+                } else {
+                    bgMusic.pause();
+                    musicBtn.textContent = '播放音乐';
+                }
+            });
+            
+            // 初始化游戏并开始音乐
+            initGame();
+            startMusic();
+        });
+    </script>
+</body>
+</html>
